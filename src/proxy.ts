@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { verifyToken } from '@/lib/auth-mysql'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ROUTE CONFIGURATION
@@ -7,21 +8,13 @@ import { createServerClient } from '@supabase/ssr'
 
 /**
  * Routes that require an authenticated session.
- * Prefix-matched: any path STARTING WITH these strings is protected.
+ * Any path STARTING WITH these prefixes requires the user to be logged in.
+ * Gate all /tools and /dashboard pages behind login.
  */
 const PROTECTED_PREFIXES = [
   '/dashboard',
-]
-
-/**
- * Specific tool routes that require authentication.
- * These are high-compute endpoints gated behind login.
- */
-const PROTECTED_TOOL_ROUTES = [
-  '/tools/ocr-pdf',
-  '/tools/split-pdf',
-  '/tools/remove-background',
-  '/tools/bulk-ocr',
+  '/tools',
+  '/admin',
 ]
 
 /**
@@ -30,18 +23,8 @@ const PROTECTED_TOOL_ROUTES = [
  */
 const AUTH_ROUTES = ['/auth']
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
 function isProtected(pathname: string): boolean {
-  const matchesPrefix = PROTECTED_PREFIXES.some((prefix) =>
-    pathname.startsWith(prefix)
-  )
-  const matchesTool = PROTECTED_TOOL_ROUTES.some((route) =>
-    pathname === route || pathname.startsWith(route + '/')
-  )
-  return matchesPrefix || matchesTool
+  return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix))
 }
 
 function isAuthRoute(pathname: string): boolean {
@@ -49,105 +32,93 @@ function isAuthRoute(pathname: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PROXY (Next.js 16 — replaces deprecated middleware.ts)
+// PROXY (Next.js 16 Gatekeeper)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Build a mutable response that tokens can be written into.
-  // Starting with NextResponse.next() keeps all headers intact.
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   })
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  // 1. Check MySQL JWT Auth Token Cookie
+  const mysqlToken = request.cookies.get('auth_token')?.value
+  let isAuthenticated = false
 
-  // Create a Supabase SSR client that reads cookies from the request
-  // and writes any refreshed tokens back into the response.
-  // Both getAll AND setAll must be implemented — the @supabase/ssr docs
-  // state that omitting setAll causes random logouts and stale sessions.
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll()
+  if (mysqlToken) {
+    const payload = verifyToken(mysqlToken)
+    if (payload) {
+      isAuthenticated = true
+    }
+  }
+
+  // 2. Fallback: Check Supabase Auth Session Cookie if MySQL token not present
+  if (!isAuthenticated) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
+
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
       },
-      setAll(cookiesToSet) {
-        // Write refreshed tokens back to the request (for downstream use)
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value)
-        )
-        // Re-build the response so cookie headers flow to the browser
-        response = NextResponse.next({
-          request: {
-            headers: request.headers,
-          },
-        })
-        // Attach each cookie to the outgoing response headers
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        )
-      },
-    },
-  })
+    })
 
-  // Calling getUser() triggers a silent token refresh when needed.
-  // This is the ONLY secure way to read session state in proxy —
-  // getSession() is NOT verified server-side and must never be used here.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  const isAuthenticated = !!user
+    if (user) {
+      isAuthenticated = true
+    }
+  }
 
   // ── RULE 1: Protected route gateway ────────────────────────────────────────
-  // Unauthenticated users hitting a protected route are redirected to /auth
-  // with the original destination appended so they return seamlessly after login.
+  // Unauthenticated users trying to access any tool or dashboard route are redirected to /auth
   if (isProtected(pathname) && !isAuthenticated) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth'
     redirectUrl.searchParams.set('redirect', pathname)
     console.info(
-      `[proxy] Unauthenticated access to "${pathname}" — redirecting to /auth?redirect=${pathname}`
+      `[Proxy Guard] Unauthenticated access to "${pathname}" — redirecting to /auth?redirect=${pathname}`
     )
     return NextResponse.redirect(redirectUrl)
   }
 
   // ── RULE 2: Authenticated user lock ────────────────────────────────────────
-  // Logged-in users visiting /auth are bounced to the home dashboard.
+  // Logged-in users visiting /auth are bounced to the home page.
   if (isAuthRoute(pathname) && isAuthenticated) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/'
     redirectUrl.search = ''
     console.info(
-      `[proxy] Authenticated user tried to visit "${pathname}" — redirecting to /`
+      `[Proxy Guard] Authenticated user visited "${pathname}" — redirecting to /`
     )
     return NextResponse.redirect(redirectUrl)
   }
 
-  // All other routes: pass through with (possibly refreshed) session cookies.
   return response
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MATCHER — only run proxy on real page routes
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const config = {
   matcher: [
-    /*
-     * Match every route EXCEPT:
-     *   - _next/static  (build chunks, JS bundles)
-     *   - _next/image   (Next.js image optimiser)
-     *   - favicon.ico   (browser tab icon)
-     *   - Any file with an extension (images, fonts, icons, etc.)
-     *
-     * This keeps proxy off static assets so page load speed
-     * is not affected by the auth check.
-     */
     '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|otf|css|js|map)$).*)',
   ],
 }

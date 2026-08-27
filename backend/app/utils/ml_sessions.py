@@ -31,8 +31,10 @@ except Exception as _e:
     print(f"[STARTUP] rembg unavailable ({_e}). Background remover disabled.")
 
 # ── Tesseract ─────────────────────────────────────────────────────────────────
-import pytesseract
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+import os, shutil, pytesseract
+_tess_cmd = os.environ.get("TESSERACT_CMD") or shutil.which("tesseract") or r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+if os.path.exists(_tess_cmd) or shutil.which(_tess_cmd):
+    pytesseract.pytesseract.tesseract_cmd = _tess_cmd
 
 # ── TrOCR: lazy-loaded on first handwriting request ──────────────────────────
 _trocr_processor      = None

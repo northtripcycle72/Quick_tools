@@ -143,12 +143,41 @@ function ToolInterface({ slug, loggedIn, tool }: { slug: string; loggedIn: boole
 
 export default function ToolClient({ slug }: { slug: string }) {
   const [loggedIn, setLoggedIn] = useState(false)
+  const [isToolActive, setIsToolActive] = useState<boolean | null>(null)
+  const [activeMap, setActiveMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setLoggedIn(!!data.session)
-    })
-  }, [])
+    // Check logged in state via MySQL auth
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.user) {
+          setLoggedIn(true)
+        } else {
+          supabase.auth.getSession().then(({ data: sbData }) => {
+            setLoggedIn(!!sbData.session)
+          })
+        }
+      })
+      .catch(() => {})
+
+    // Check Tool Active / Inactive Status from MySQL DB
+    fetch('/api/tools/active-status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.activeMap) {
+          setActiveMap(data.activeMap)
+          if (typeof data.activeMap[slug] === 'boolean') {
+            setIsToolActive(data.activeMap[slug])
+          } else {
+            setIsToolActive(true)
+          }
+        } else {
+          setIsToolActive(true)
+        }
+      })
+      .catch(() => setIsToolActive(true))
+  }, [slug])
 
   const tool = allToolsConfig[slug]
 
@@ -174,6 +203,31 @@ export default function ToolClient({ slug }: { slug: string }) {
     )
   }
 
+  /* ── Disabled / Inactive State ── */
+  if (isToolActive === false) {
+    return (
+      <main className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex flex-col items-center justify-center py-32 text-center px-6 max-w-xl mx-auto">
+          <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mb-5">
+            <span className="material-symbols-outlined text-[36px]">engineering</span>
+          </div>
+          <h1 className="text-headline-md text-on-surface font-extrabold mb-2">Tool Under Maintenance</h1>
+          <p className="text-body-md text-on-surface-variant mb-6">
+            The <strong>{tool.name}</strong> tool has been temporarily disabled by the site administrator for maintenance or upgrades. Please check back later!
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-xl text-label-md font-bold hover:opacity-90 transition-opacity"
+          >
+            ← Explore Other Active Tools
+          </Link>
+        </div>
+        <Footer />
+      </main>
+    )
+  }
+
   // Find the category to display related tools in the sidebar
   const category = appCategories.find(c => c.label === tool.categoryLabel) || appCategories[0]
 
@@ -190,7 +244,7 @@ export default function ToolClient({ slug }: { slug: string }) {
             <p className="text-label-md text-on-surface-variant mt-1">Related Tools</p>
           </div>
           <nav className="flex flex-col gap-1">
-            {category.tools.map(t => (
+            {category.tools.filter(t => activeMap[t.slug] !== false).map(t => (
               <Link
                 key={t.slug}
                 href={`/tools/${t.slug}`}

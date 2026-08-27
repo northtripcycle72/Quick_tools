@@ -1,6 +1,15 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuthApi } from '@/lib/auth-mysql'
 
 export async function POST(req: NextRequest) {
+  const user = await requireAuthApi(req)
+  if (!user) {
+    return NextResponse.json(
+      { detail: 'Authentication required. Please sign in to use QuickTools.' },
+      { status: 401 }
+    )
+  }
+
   try {
     const formData = await req.formData()
 

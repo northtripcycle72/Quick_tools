@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server';
+import { requireAuthApi } from '@/lib/auth-mysql';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
+  const user = await requireAuthApi(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required. Please sign in to use QuickTools.' },
+      { status: 401 }
+    );
+  }
+
   try {
     const formData = await request.formData();
     const backendResponse = await fetch('http://127.0.0.1:8000/api/tools/pdf-to-word', {

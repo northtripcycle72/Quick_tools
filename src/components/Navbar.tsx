@@ -7,24 +7,47 @@ import { supabase } from '@/lib/supabase'
 
 export default function Navbar() {
   const [email, setEmail] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [isDark, setIsDark] = useState(false)
+  const [role, setRole] = useState<'admin' | 'user'>('user')
   const pathname = usePathname()
   const router = useRouter()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setEmail(data.session?.user?.email || '')
-    })
-    setIsDark(document.documentElement.classList.contains('dark'))
-  }, [])
+    // Fetch Current MySQL User Session
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.user) {
+          setEmail(data.user.email)
+          setDisplayName(data.user.full_name || data.user.email.split('@')[0])
+          setRole(data.user.role || 'user')
+        } else {
+          // Supabase Fallback Check
+          supabase.auth.getSession().then(({ data: sbData }) => {
+            const sbUser = sbData.session?.user
+            if (sbUser) {
+              setEmail(sbUser.email || '')
+              setDisplayName(sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || '')
+            }
+          })
+        }
+      })
+      .catch(() => {})
 
-  useEffect(() => {
-    setMenuOpen(false)
+    const isDarkClass = document.documentElement.classList.contains('dark')
+    setIsDark(isDarkClass)
   }, [pathname])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      await supabase.auth.signOut()
+    } catch {}
+    setEmail('')
+    setDisplayName('')
+    setRole('user')
     router.push('/')
     router.refresh()
   }
@@ -32,241 +55,291 @@ export default function Navbar() {
   const toggleDarkMode = () => {
     const active = document.documentElement.classList.toggle('dark')
     setIsDark(active)
+    localStorage.setItem('theme', active ? 'dark' : 'light')
   }
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-surface dark:bg-surface-dim shadow-sm border-b border-outline-variant/30 transition-colors duration-300">
-      <div className="flex justify-between items-center h-16 px-6 sm:px-8 lg:px-12 max-w-container-max mx-auto w-full">
-        {/* Logo & Desktop Nav */}
-        <div className="flex items-center gap-6 xl:gap-8">
-          <Link href="/" className="text-xl font-extrabold tracking-tight text-primary shrink-0 flex items-center">
-            QuickTools
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800/80 transition-all duration-300 shadow-sm">
+      <div className="flex justify-between items-center h-20 px-6 sm:px-10 max-w-7xl mx-auto w-full">
+        
+        {/* Brand & Main Nav */}
+        <div className="flex items-center gap-8 lg:gap-12">
+          
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-3 shrink-0 group">
+            <div className="w-10 h-10 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-600/30 group-hover:scale-105 transition-transform duration-300">
+              <span className="material-symbols-outlined text-2xl">auto_awesome</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xl font-black tracking-tight text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
+                QuickTools
+              </span>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 -mt-1">
+                Workspace
+              </span>
+            </div>
           </Link>
 
-          {/* Desktop Nav */}
-          <nav className="hidden lg:flex items-center gap-5 xl:gap-7 whitespace-nowrap">
-            {/* PDF Tools Dropdown */}
-            <div className="relative group nav-item">
-              <button className="flex items-center gap-1 text-on-surface-variant group-hover:text-primary transition-colors duration-200 text-[12px] xl:text-[13px] font-semibold uppercase tracking-wider py-2">
-                PDF Tools
-                <span className="material-symbols-outlined text-[16px]">expand_more</span>
+          {/* Desktop Mega Nav */}
+          <nav className="hidden lg:flex items-center gap-6 whitespace-nowrap text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+            
+            {/* PDF Tools */}
+            <div className="relative group nav-item py-4">
+              <button className="flex items-center gap-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                <span>PDF Tools</span>
+                <span className="material-symbols-outlined text-lg">expand_more</span>
               </button>
-              <div className="mega-menu absolute top-full left-0 pt-2 w-[260px]">
-                <div className="bg-surface-container-lowest rounded-xl shadow-xl border border-outline-variant p-5 space-y-3">
-                  <Link href="/tools/compress-pdf" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">compress</span>
-                    <span className="font-semibold text-on-surface">Compress PDF</span>
+              <div className="mega-menu absolute top-full left-0 pt-2 w-64">
+                <div className="bg-white dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-xl dark:shadow-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                  <Link href="/tools/compress-pdf" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">compress</span>
+                    <div>
+                      <div className="text-sm font-bold">Compress PDF</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">Reduce file size</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/pdf-to-word" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">description</span>
-                    <span className="font-semibold text-on-surface">PDF to Word</span>
+                  <Link href="/tools/pdf-to-word" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">description</span>
+                    <div>
+                      <div className="text-sm font-bold">PDF to Word</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">Editable Word DOCX</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/merge-pdf" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">call_merge</span>
-                    <span className="font-semibold text-on-surface">Merge PDF</span>
+                  <Link href="/tools/merge-pdf" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">call_merge</span>
+                    <div>
+                      <div className="text-sm font-bold">Merge PDF</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">Combine documents</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/split-pdf" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">call_split</span>
-                    <span className="font-semibold text-on-surface">Split PDF</span>
+                  <Link href="/tools/split-pdf" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">call_split</span>
+                    <div>
+                      <div className="text-sm font-bold">Split PDF</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">Extract pages</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/pdf-to-text" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">document_scanner</span>
-                    <span className="font-semibold text-on-surface">OCR PDF</span>
+                  <Link href="/tools/pdf-to-text" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">document_scanner</span>
+                    <div>
+                      <div className="text-sm font-bold">OCR PDF</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">AI Text Extraction</div>
+                    </div>
                   </Link>
                 </div>
               </div>
             </div>
 
-            {/* Image Tools Dropdown */}
-            <div className="relative group nav-item">
-              <button className="flex items-center gap-1 text-on-surface-variant group-hover:text-primary transition-colors duration-200 text-[12px] xl:text-[13px] font-semibold uppercase tracking-wider py-2">
-                Image Tools
-                <span className="material-symbols-outlined text-[16px]">expand_more</span>
+            {/* Image Tools */}
+            <div className="relative group nav-item py-4">
+              <button className="flex items-center gap-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                <span>Image Tools</span>
+                <span className="material-symbols-outlined text-lg">expand_more</span>
               </button>
-              <div className="mega-menu absolute top-full left-0 pt-2 w-[260px]">
-                <div className="bg-surface-container-lowest rounded-xl shadow-xl border border-outline-variant p-5 space-y-3">
-                  <Link href="/tools/image-compressor" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">photo_size_select_small</span>
-                    <span className="font-semibold text-on-surface">Image Compressor</span>
+              <div className="mega-menu absolute top-full left-0 pt-2 w-64">
+                <div className="bg-white dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-xl dark:shadow-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                  <Link href="/tools/image-compressor" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">photo_size_select_small</span>
+                    <div>
+                      <div className="text-sm font-bold">Image Compressor</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">PNG, JPG & SVG</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/resize-image" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">aspect_ratio</span>
-                    <span className="font-semibold text-on-surface">Resize Image</span>
+                  <Link href="/tools/resize-image" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">aspect_ratio</span>
+                    <div>
+                      <div className="text-sm font-bold">Resize Image</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">Custom dimensions</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/background-remover" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">person_remove</span>
-                    <span className="font-semibold text-on-surface">Background Remover</span>
+                  <Link href="/tools/background-remover" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">person_remove</span>
+                    <div>
+                      <div className="text-sm font-bold">Background Remover</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">AI cutout</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/image-converter" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">sync_alt</span>
-                    <span className="font-semibold text-on-surface">Image Converter</span>
-                  </Link>
-                  <Link href="/tools/image-to-text" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">document_scanner</span>
-                    <span className="font-semibold text-on-surface">Image to Text (OCR)</span>
-                  </Link>
-                  <Link href="/tools/image-to-pdf" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">imagesmode</span>
-                    <span className="font-semibold text-on-surface">Image to PDF</span>
+                  <Link href="/tools/image-converter" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">sync_alt</span>
+                    <div>
+                      <div className="text-sm font-bold">Image Converter</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">JPG, PNG, WEBP</div>
+                    </div>
                   </Link>
                 </div>
               </div>
             </div>
 
-            {/* Text & OCR Dropdown */}
-            <div className="relative group nav-item">
-              <button className="flex items-center gap-1 text-on-surface-variant group-hover:text-primary transition-colors duration-200 text-[12px] xl:text-[13px] font-semibold uppercase tracking-wider py-2">
-                Text & OCR
-                <span className="material-symbols-outlined text-[16px]">expand_more</span>
+            {/* Converters */}
+            <div className="relative group nav-item py-4">
+              <button className="flex items-center gap-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                <span>Converters</span>
+                <span className="material-symbols-outlined text-lg">expand_more</span>
               </button>
-              <div className="mega-menu absolute top-full left-0 pt-2 w-[240px]">
-                <div className="bg-surface-container-lowest rounded-xl shadow-xl border border-outline-variant p-5 space-y-3">
-                  <Link href="/tools/word-counter" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">pin</span>
-                    <span className="font-semibold text-on-surface">Word Counter</span>
+              <div className="mega-menu absolute top-full left-0 pt-2 w-64">
+                <div className="bg-white dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-xl dark:shadow-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                  <Link href="/tools/json-to-csv" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">data_object</span>
+                    <div>
+                      <div className="text-sm font-bold">JSON to CSV</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">Spreadsheet converter</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/case-converter" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">format_letter_spacing</span>
-                    <span className="font-semibold text-on-surface">Case Converter</span>
+                  <Link href="/tools/unit-converter" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">straighten</span>
+                    <div>
+                      <div className="text-sm font-bold">Unit Converter</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">Metrics & Weights</div>
+                    </div>
                   </Link>
-                  <Link href="/tools/remove-line-breaks" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">wrap_text</span>
-                    <span className="font-semibold text-on-surface">Remove Line Breaks</span>
-                  </Link>
-                  <Link href="/tools/bulk-ocr" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">inventory_2</span>
-                    <span className="font-semibold text-on-surface">Bulk OCR</span>
+                  <Link href="/tools/currency-converter" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-800 dark:text-slate-200 transition-all font-semibold">
+                    <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-xl">payments</span>
+                    <div>
+                      <div className="text-sm font-bold">Currency Converter</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">Real-time rates</div>
+                    </div>
                   </Link>
                 </div>
               </div>
             </div>
 
-            {/* Converters Dropdown */}
-            <div className="relative group nav-item">
-              <button className="flex items-center gap-1 text-on-surface-variant group-hover:text-primary transition-colors duration-200 text-[12px] xl:text-[13px] font-semibold uppercase tracking-wider py-2">
-                Converters
-                <span className="material-symbols-outlined text-[16px]">expand_more</span>
-              </button>
-              <div className="mega-menu absolute top-full left-0 pt-2 w-[240px]">
-                <div className="bg-surface-container-lowest rounded-xl shadow-xl border border-outline-variant p-5 space-y-3">
-                  <Link href="/tools/json-to-csv" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">data_object</span>
-                    <span className="font-semibold text-on-surface">JSON to CSV</span>
-                  </Link>
-                  <Link href="/tools/unit-converter" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">straighten</span>
-                    <span className="font-semibold text-on-surface">Unit Converter</span>
-                  </Link>
-                  <Link href="/tools/currency-converter" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">payments</span>
-                    <span className="font-semibold text-on-surface">Currency Converter</span>
-                  </Link>
-                  <Link href="/tools/qr-code-generator" className="flex items-center gap-3 text-body-sm hover:text-primary group/item">
-                    <span className="material-symbols-outlined text-primary/70 group-hover/item:text-primary text-[18px]">qr_code_2</span>
-                    <span className="font-semibold text-on-surface">QR Code Generator</span>
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            <Link href="/" className="text-on-surface-variant hover:text-primary transition-colors duration-200 text-[12px] xl:text-[13px] font-semibold uppercase tracking-wider">
-              All Tools
-            </Link>
-
-            <Link href="/pricing" className="text-on-surface-variant hover:text-primary transition-colors duration-200 text-[12px] xl:text-[13px] font-semibold uppercase tracking-wider">
+            <Link href="/pricing" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
               Pricing
             </Link>
+
           </nav>
         </div>
 
         {/* Right side Actions */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-4 shrink-0">
+          
+          {/* Theme Switcher Button */}
           <button
-            className="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant cursor-pointer"
             onClick={toggleDarkMode}
-            aria-label="Toggle dark mode"
+            className="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all shadow-xs"
+            title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
           >
-            <span className="material-symbols-outlined text-[22px]">
+            <span className="material-symbols-outlined text-xl">
               {isDark ? 'light_mode' : 'dark_mode'}
             </span>
           </button>
 
-          <div className="hidden md:block w-px h-6 bg-outline-variant/50"></div>
-
-          <div className="relative group nav-item hidden md:block">
-            {email ? (
-              <button className="flex items-center justify-center px-4 h-9 rounded-full bg-surface-container-highest text-on-surface-variant overflow-hidden border border-outline-variant hover:border-primary transition-colors text-label-md font-bold truncate max-w-[150px]">
-                {email.split('@')[0]}
+          {/* Admin / User Dropdown */}
+          {email ? (
+            <div className="relative group nav-item">
+              <button className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-700/60 text-indigo-900 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-all font-bold text-xs">
+                <span className="material-symbols-outlined text-base">
+                  {role === 'admin' ? 'admin_panel_settings' : 'account_circle'}
+                </span>
+                <span className="truncate max-w-[120px]">{displayName}</span>
+                {role === 'admin' && (
+                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-700">
+                    ADMIN
+                  </span>
+                )}
               </button>
-            ) : (
-              <Link href="/auth" className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-container-highest text-on-surface-variant overflow-hidden border border-outline-variant hover:border-primary transition-colors">
-                <span className="material-symbols-outlined text-[20px]">person</span>
-              </Link>
-            )}
-            
-            {/* User Dropdown */}
-            {email && (
-              <div className="mega-menu absolute top-full right-0 pt-4 w-[200px]">
-                <div className="bg-surface-container-lowest rounded-xl shadow-xl border border-outline-variant p-2 flex flex-col">
-                  <div className="px-4 py-3 border-b border-outline-variant/30 mb-2">
-                    <p className="text-label-md text-on-surface-variant truncate">{email}</p>
+
+              <div className="mega-menu absolute top-full right-0 pt-2 w-64">
+                <div className="bg-white dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-xl dark:shadow-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                  <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 mb-2">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{displayName}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate">{email}</p>
                   </div>
-                  <button 
+
+                  {role === 'admin' && (
+                    <Link
+                      href="/admin"
+                      className="flex items-center gap-3 p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-600/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all font-bold text-xs"
+                    >
+                      <span className="material-symbols-outlined text-xl">admin_panel_settings</span>
+                      Admin Console
+                    </Link>
+                  )}
+
+                  <button
                     onClick={handleLogout}
-                    className="flex items-center gap-3 px-4 py-2 text-body-sm text-error hover:bg-error-container/30 rounded-lg transition-colors text-left font-semibold"
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-700 dark:hover:text-rose-300 transition-all font-bold text-xs text-left"
                   >
-                    <span className="material-symbols-outlined text-[18px]">logout</span>
-                    Sign out
+                    <span className="material-symbols-outlined text-xl">logout</span>
+                    Sign Out
                   </button>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Link
+                href="/auth?tab=login"
+                className="px-4 py-2 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/auth?tab=register"
+                className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black text-xs transition-all shadow-lg shadow-indigo-600/30 active:scale-95"
+              >
+                Create Account
+              </Link>
+            </div>
+          )}
 
-          {/* Mobile hamburger */}
+          {/* Mobile Menu Button */}
           <button
-            className="lg:hidden p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors"
-            onClick={() => setMenuOpen(o => !o)}
-            aria-label="Toggle menu"
-            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="lg:hidden p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300"
           >
-            <span className="material-symbols-outlined text-[24px]">
+            <span className="material-symbols-outlined text-2xl">
               {menuOpen ? 'close' : 'menu'}
             </span>
           </button>
+
         </div>
+
       </div>
 
-      {/* Mobile dropdown */}
+      {/* Mobile Drawer Menu */}
       {menuOpen && (
-        <div className="lg:hidden border-t border-outline-variant/30 bg-surface px-6 py-4 flex flex-col gap-1 max-h-[80vh] overflow-y-auto">
-          <Link href="/" className="px-4 py-3 rounded-lg text-body-sm font-semibold transition-colors text-on-surface-variant hover:text-primary hover:bg-surface-container-high">
-            All Tools
-          </Link>
-          <Link href="/pricing" className="px-4 py-3 rounded-lg text-body-sm font-semibold transition-colors text-on-surface-variant hover:text-primary hover:bg-surface-container-high">
-            Pricing
-          </Link>
-          
-          <div className="border-t border-outline-variant/30 mt-4 pt-4">
-            {email ? (
-              <div className="flex flex-col gap-2">
-                <span className="text-label-md text-on-surface-variant px-4">{email}</span>
-                <button
-                  onClick={handleLogout}
-                  className="text-left px-4 py-3 rounded-lg text-body-sm text-error hover:bg-error-container/30 font-semibold transition-colors flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-[20px]">logout</span>
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <Link
-                href="/auth"
-                className="flex items-center justify-center gap-2 bg-primary text-on-primary px-4 py-3 rounded-xl text-label-md font-bold transition-transform active:scale-95 shadow-sm"
-              >
-                <span className="material-symbols-outlined text-[20px]">person</span>
-                Sign In
+        <div className="lg:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-6 space-y-4">
+          <div className="flex flex-col gap-3 font-bold text-sm text-slate-700 dark:text-slate-300">
+            <Link href="/" onClick={() => setMenuOpen(false)} className="p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900">
+              Home
+            </Link>
+            <Link href="/pricing" onClick={() => setMenuOpen(false)} className="p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900">
+              Pricing
+            </Link>
+            {role === 'admin' && (
+              <Link href="/admin" onClick={() => setMenuOpen(false)} className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-black">
+                👑 Admin Control Console
               </Link>
+            )}
+          </div>
+
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+            {email ? (
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 font-bold text-xs"
+              >
+                <span className="material-symbols-outlined text-lg">logout</span>
+                Sign Out ({displayName})
+              </button>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <Link
+                  href="/auth?tab=login"
+                  onClick={() => setMenuOpen(false)}
+                  className="py-3 rounded-2xl bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-center font-bold text-xs border border-slate-200 dark:border-slate-800"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/auth?tab=register"
+                  onClick={() => setMenuOpen(false)}
+                  className="py-3 rounded-2xl bg-indigo-600 text-white text-center font-black text-xs shadow-lg shadow-indigo-600/30"
+                >
+                  Create Account
+                </Link>
+              </div>
             )}
           </div>
         </div>

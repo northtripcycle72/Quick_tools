@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthenticatedUser } from '@/lib/supabase-server'
+import { requireAuthApi } from '@/lib/auth-mysql'
 
-/**
- * OCR API Route — Proxies to the local Python backend.
- * No external AI API calls. No API keys required.
- *
- * Accepts: { base64: string, mimeType: string, prompt?: string }
- * Returns: { text: string }
- */
 export async function POST(req: NextRequest) {
-  // We allow anonymous usage, but we'll track it on the client side.
-  const user = await getAuthenticatedUser(req)
+  const user = await requireAuthApi(req)
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required. Please sign in to use QuickTools.' },
+      { status: 401 }
+    )
+  }
 
   const { base64, mimeType, prompt } = await req.json()
 
