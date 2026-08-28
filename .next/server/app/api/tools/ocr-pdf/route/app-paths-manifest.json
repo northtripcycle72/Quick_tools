@@ -1,0 +1,3 @@
+{
+  "/api/tools/ocr-pdf/route": "app/api/tools/ocr-pdf/route.js"
+}

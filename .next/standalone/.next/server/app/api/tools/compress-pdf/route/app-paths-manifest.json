@@ -1,0 +1,3 @@
+{
+  "/api/tools/compress-pdf/route": "app/api/tools/compress-pdf/route.js"
+}

@@ -13,8 +13,11 @@
 # testing
 /coverage
 
-# next.js
-/.next/
+# next.js (include pre-built .next folder for deployment)
+!/.next/
+/.next/cache/
+/.next/dev/
+/.next/diagnostics/
 /out/
 
 # production
